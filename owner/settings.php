@@ -61,6 +61,100 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 }
                 break;
                 
+            case 'update_sms':
+                $smsApiUrl = sanitize_input($_POST['sms_api_url'] ?? '');
+                $smsApiKey = sanitize_input($_POST['sms_api_key'] ?? '');
+                $smsSenderId = sanitize_input($_POST['sms_sender_id'] ?? '');
+                $hotelName = sanitize_input($_POST['hotel_name'] ?? '');
+                
+                if (empty($smsApiUrl) || empty($smsApiKey)) {
+                    $error = 'SMS API URL and API Key are required';
+                } else {
+                    try {
+                        $stmt = $pdo->prepare("
+                            INSERT INTO settings (setting_key, setting_value, updated_by) 
+                            VALUES (?, ?, ?) 
+                            ON DUPLICATE KEY UPDATE setting_value = ?, updated_by = ?
+                        ");
+                        
+                        $stmt->execute(['sms_api_url', $smsApiUrl, $_SESSION['user_id'], $smsApiUrl, $_SESSION['user_id']]);
+                        $stmt->execute(['sms_api_key', $smsApiKey, $_SESSION['user_id'], $smsApiKey, $_SESSION['user_id']]);
+                        $stmt->execute(['sms_sender_id', $smsSenderId, $_SESSION['user_id'], $smsSenderId, $_SESSION['user_id']]);
+                        $stmt->execute(['hotel_name', $hotelName, $_SESSION['user_id'], $hotelName, $_SESSION['user_id']]);
+                        
+                        redirect_with_message('settings.php', 'SMS settings updated successfully!', 'success');
+                    } catch (Exception $e) {
+                        $error = 'Failed to update SMS settings';
+                    }
+                }
+                break;
+                
+            case 'update_email':
+                $smtpHost = sanitize_input($_POST['smtp_host'] ?? '');
+                $smtpPort = sanitize_input($_POST['smtp_port'] ?? '');
+                $smtpUsername = sanitize_input($_POST['smtp_username'] ?? '');
+                $smtpPassword = $_POST['smtp_password'] ?? '';
+                $smtpEncryption = $_POST['smtp_encryption'] ?? 'tls';
+                $ownerEmail = sanitize_input($_POST['owner_email'] ?? '');
+                
+                if (empty($smtpHost) || empty($smtpUsername) || empty($smtpPassword)) {
+                    $error = 'SMTP Host, Username and Password are required';
+                } else {
+                    try {
+                        $stmt = $pdo->prepare("
+                            INSERT INTO settings (setting_key, setting_value, updated_by) 
+                            VALUES (?, ?, ?) 
+                            ON DUPLICATE KEY UPDATE setting_value = ?, updated_by = ?
+                        ");
+                        
+                        $stmt->execute(['smtp_host', $smtpHost, $_SESSION['user_id'], $smtpHost, $_SESSION['user_id']]);
+                        $stmt->execute(['smtp_port', $smtpPort, $_SESSION['user_id'], $smtpPort, $_SESSION['user_id']]);
+                        $stmt->execute(['smtp_username', $smtpUsername, $_SESSION['user_id'], $smtpUsername, $_SESSION['user_id']]);
+                        $stmt->execute(['smtp_password', $smtpPassword, $_SESSION['user_id'], $smtpPassword, $_SESSION['user_id']]);
+                        $stmt->execute(['smtp_encryption', $smtpEncryption, $_SESSION['user_id'], $smtpEncryption, $_SESSION['user_id']]);
+                        $stmt->execute(['owner_email', $ownerEmail, $_SESSION['user_id'], $ownerEmail, $_SESSION['user_id']]);
+                        
+                        redirect_with_message('settings.php', 'Email settings updated successfully!', 'success');
+                    } catch (Exception $e) {
+                        $error = 'Failed to update email settings';
+                    }
+                }
+                break;
+                
+            case 'test_sms':
+                $testMobile = sanitize_input($_POST['test_mobile'] ?? '');
+                
+                if (empty($testMobile) || !preg_match('/^[6-9]\d{9}$/', $testMobile)) {
+                    $error = 'Valid 10-digit mobile number is required for testing';
+                } else {
+                    require_once '../includes/sms_functions.php';
+                    $result = test_sms_configuration($testMobile, $pdo, $_SESSION['user_id']);
+                    
+                    if ($result['success']) {
+                        redirect_with_message('settings.php', 'Test SMS sent successfully!', 'success');
+                    } else {
+                        $error = 'SMS test failed: ' . $result['message'];
+                    }
+                }
+                break;
+                
+            case 'test_email':
+                $testEmail = sanitize_input($_POST['test_email'] ?? '');
+                
+                if (empty($testEmail) || !filter_var($testEmail, FILTER_VALIDATE_EMAIL)) {
+                    $error = 'Valid email address is required for testing';
+                } else {
+                    require_once '../includes/email_functions.php';
+                    $result = test_email_configuration($testEmail, $pdo, $_SESSION['user_id']);
+                    
+                    if ($result['success']) {
+                        redirect_with_message('settings.php', 'Test email sent successfully!', 'success');
+                    } else {
+                        $error = 'Email test failed: ' . $result['message'];
+                    }
+                }
+                break;
+                
             case 'change_password':
                 $newPassword = $_POST['new_password'] ?? '';
                 $confirmPassword = $_POST['confirm_password'] ?? '';
@@ -90,7 +184,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 }
 
 // Get current settings
-$stmt = $pdo->prepare("SELECT setting_key, setting_value FROM settings WHERE setting_key IN ('upi_id', 'qr_image')");
+$stmt = $pdo->prepare("
+    SELECT setting_key, setting_value 
+    FROM settings 
+    WHERE setting_key IN (
+        'upi_id', 'hotel_name', 'sms_api_url', 'sms_api_key', 'sms_sender_id',
+        'smtp_host', 'smtp_port', 'smtp_username', 'smtp_password', 'smtp_encryption', 'owner_email'
+    )
+");
 $stmt->execute();
 $settings = [];
 while ($row = $stmt->fetch()) {
@@ -152,6 +253,150 @@ $flash = get_flash_message();
                 
                 <button type="submit" class="btn btn-warning">Change Username</button>
             </form>
+        </div>
+        
+        <!-- SMS Settings -->
+        <div class="form-container">
+            <h3>SMS Configuration</h3>
+            <p style="color: var(--dark-color); margin-bottom: 1rem;">
+                Configure SMS API for sending booking notifications to customers.
+            </p>
+            
+            <form method="POST">
+                <input type="hidden" name="csrf_token" value="<?= generate_csrf_token() ?>">
+                <input type="hidden" name="action" value="update_sms">
+                
+                <div class="form-group">
+                    <label for="hotel_name" class="form-label">Hotel Name *</label>
+                    <input type="text" id="hotel_name" name="hotel_name" class="form-control" required
+                           value="<?= htmlspecialchars($settings['hotel_name'] ?? 'L.P.S.T Hotel') ?>">
+                </div>
+                
+                <div class="form-group">
+                    <label for="sms_api_url" class="form-label">SMS API URL *</label>
+                    <input type="url" id="sms_api_url" name="sms_api_url" class="form-control" required
+                           value="<?= htmlspecialchars($settings['sms_api_url'] ?? 'https://api.textlocal.in/send/') ?>"
+                           placeholder="https://api.textlocal.in/send/">
+                    <small style="color: var(--dark-color); font-size: 0.9rem;">
+                        Examples: TextLocal, MSG91, Fast2SMS API endpoint
+                    </small>
+                </div>
+                
+                <div class="form-group">
+                    <label for="sms_api_key" class="form-label">SMS API Key *</label>
+                    <input type="text" id="sms_api_key" name="sms_api_key" class="form-control" required
+                           value="<?= htmlspecialchars($settings['sms_api_key'] ?? '') ?>"
+                           placeholder="Your SMS API Key">
+                </div>
+                
+                <div class="form-group">
+                    <label for="sms_sender_id" class="form-label">SMS Sender ID</label>
+                    <input type="text" id="sms_sender_id" name="sms_sender_id" class="form-control"
+                           value="<?= htmlspecialchars($settings['sms_sender_id'] ?? 'LPSTHT') ?>"
+                           placeholder="LPSTHT" maxlength="6">
+                    <small style="color: var(--dark-color); font-size: 0.9rem;">
+                        6 character sender ID (if supported by your SMS provider)
+                    </small>
+                </div>
+                
+                <button type="submit" class="btn btn-primary">Update SMS Settings</button>
+            </form>
+            
+            <!-- Test SMS -->
+            <div style="margin-top: 2rem; padding-top: 1rem; border-top: 1px solid var(--border-color);">
+                <h4>Test SMS Configuration</h4>
+                <form method="POST" style="display: flex; gap: 1rem; align-items: end;">
+                    <input type="hidden" name="csrf_token" value="<?= generate_csrf_token() ?>">
+                    <input type="hidden" name="action" value="test_sms">
+                    <div class="form-group" style="margin: 0; flex: 1;">
+                        <label for="test_mobile" class="form-label">Test Mobile Number</label>
+                        <input type="tel" id="test_mobile" name="test_mobile" class="form-control"
+                               pattern="[6-9][0-9]{9}" maxlength="10"
+                               placeholder="10 digit mobile number">
+                    </div>
+                    <button type="submit" class="btn btn-warning">Send Test SMS</button>
+                </form>
+            </div>
+        </div>
+        
+        <!-- Email Settings -->
+        <div class="form-container">
+            <h3>Email Configuration (SMTP)</h3>
+            <p style="color: var(--dark-color); margin-bottom: 1rem;">
+                Configure SMTP settings for sending export reports via email.
+            </p>
+            
+            <form method="POST">
+                <input type="hidden" name="csrf_token" value="<?= generate_csrf_token() ?>">
+                <input type="hidden" name="action" value="update_email">
+                
+                <div style="display: grid; grid-template-columns: 2fr 1fr; gap: 1rem;">
+                    <div class="form-group">
+                        <label for="smtp_host" class="form-label">SMTP Host *</label>
+                        <input type="text" id="smtp_host" name="smtp_host" class="form-control" required
+                               value="<?= htmlspecialchars($settings['smtp_host'] ?? 'smtp.gmail.com') ?>"
+                               placeholder="smtp.gmail.com">
+                    </div>
+                    
+                    <div class="form-group">
+                        <label for="smtp_port" class="form-label">SMTP Port *</label>
+                        <input type="number" id="smtp_port" name="smtp_port" class="form-control" required
+                               value="<?= htmlspecialchars($settings['smtp_port'] ?? '587') ?>"
+                               placeholder="587">
+                    </div>
+                </div>
+                
+                <div class="form-group">
+                    <label for="smtp_username" class="form-label">SMTP Username (Email) *</label>
+                    <input type="email" id="smtp_username" name="smtp_username" class="form-control" required
+                           value="<?= htmlspecialchars($settings['smtp_username'] ?? '') ?>"
+                           placeholder="your-email@gmail.com">
+                </div>
+                
+                <div class="form-group">
+                    <label for="smtp_password" class="form-label">SMTP Password *</label>
+                    <input type="password" id="smtp_password" name="smtp_password" class="form-control" required
+                           value="<?= htmlspecialchars($settings['smtp_password'] ?? '') ?>"
+                           placeholder="Your email password or app password">
+                    <small style="color: var(--dark-color); font-size: 0.9rem;">
+                        For Gmail, use App Password instead of regular password
+                    </small>
+                </div>
+                
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem;">
+                    <div class="form-group">
+                        <label for="smtp_encryption" class="form-label">Encryption</label>
+                        <select id="smtp_encryption" name="smtp_encryption" class="form-control">
+                            <option value="tls" <?= ($settings['smtp_encryption'] ?? 'tls') === 'tls' ? 'selected' : '' ?>>TLS</option>
+                            <option value="ssl" <?= ($settings['smtp_encryption'] ?? '') === 'ssl' ? 'selected' : '' ?>>SSL</option>
+                        </select>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label for="owner_email" class="form-label">Owner Email</label>
+                        <input type="email" id="owner_email" name="owner_email" class="form-control"
+                               value="<?= htmlspecialchars($settings['owner_email'] ?? '') ?>"
+                               placeholder="owner@lpsthotel.com">
+                    </div>
+                </div>
+                
+                <button type="submit" class="btn btn-primary">Update Email Settings</button>
+            </form>
+            
+            <!-- Test Email -->
+            <div style="margin-top: 2rem; padding-top: 1rem; border-top: 1px solid var(--border-color);">
+                <h4>Test Email Configuration</h4>
+                <form method="POST" style="display: flex; gap: 1rem; align-items: end;">
+                    <input type="hidden" name="csrf_token" value="<?= generate_csrf_token() ?>">
+                    <input type="hidden" name="action" value="test_email">
+                    <div class="form-group" style="margin: 0; flex: 1;">
+                        <label for="test_email" class="form-label">Test Email Address</label>
+                        <input type="email" id="test_email" name="test_email" class="form-control"
+                               placeholder="test@example.com">
+                    </div>
+                    <button type="submit" class="btn btn-warning">Send Test Email</button>
+                </form>
+            </div>
         </div>
         
         <!-- UPI Settings -->

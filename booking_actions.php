@@ -44,6 +44,10 @@ try {
                 WHERE id = ?
             ");
             if ($stmt->execute([$bookingId])) {
+                // Send cancellation SMS
+                require_once 'includes/sms_functions.php';
+                send_cancellation_sms($bookingId, $pdo);
+                
                 // Record cancellation for owner dashboard
                 try {
                     $resourceName = $booking['custom_name'] ?: $booking['display_name'];
@@ -91,6 +95,10 @@ try {
             $amount = max(500, $duration['hours'] * 100); // Minimum 500, then 100 per hour
             
             if (mark_booking_paid($bookingId, $pdo)) {
+                // Send checkout SMS
+                require_once 'includes/sms_functions.php';
+                send_checkout_confirmation_sms($bookingId, $pdo);
+                
                 // Record the payment
                 try {
                     $stmt = $pdo->prepare("
@@ -126,6 +134,10 @@ try {
             $booking = $stmt->fetch();
             
             if (complete_checkout($bookingId, $pdo)) {
+                // Send checkout SMS
+                require_once 'includes/sms_functions.php';
+                send_checkout_confirmation_sms($bookingId, $pdo);
+                
                 // Record checkout completion
                 if ($booking) {
                     $resourceName = $booking['custom_name'] ?: $booking['display_name'];
@@ -179,6 +191,10 @@ try {
                 WHERE id = ?
             ");
             if ($stmt->execute([$bookingId])) {
+                // Send cancellation SMS
+                require_once 'includes/sms_functions.php';
+                send_cancellation_sms($bookingId, $pdo);
+                
                 // Record cancellation for owner dashboard
                 try {
                     $resourceName = $booking['custom_name'] ?: $booking['display_name'];

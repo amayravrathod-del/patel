@@ -10,6 +10,7 @@ $pdo = $database->getConnection();
 // Handle export requests
 if (isset($_GET['export'])) {
     $format = $_GET['export'];
+    $email = $_GET['email'] ?? '';
     $startDate = $_GET['start_date'] ?? '';
     $endDate = $_GET['end_date'] ?? '';
     $adminId = $_GET['admin_id'] ?? '';
@@ -46,7 +47,7 @@ if (isset($_GET['export'])) {
     $stmt->execute($params);
     $bookings = $stmt->fetchAll();
     
-    if ($format === 'csv') {
+    if ($format === 'csv' && empty($email)) {
         header('Content-Type: text/csv');
         header('Content-Disposition: attachment; filename="lpst_bookings_' . date('Y-m-d') . '.csv"');
         
@@ -71,6 +72,23 @@ if (isset($_GET['export'])) {
         
         fclose($output);
         exit;
+    } elseif ($format === 'email' && !empty($email)) {
+        // Send export via email
+        require_once '../includes/email_functions.php';
+        
+        $filters = [
+            'start_date' => $startDate,
+            'end_date' => $endDate,
+            'admin_id' => $adminId
+        ];
+        
+        $result = send_export_email($email, $bookings, $filters, $pdo, $_SESSION['user_id']);
+        
+        if ($result['success']) {
+            redirect_with_message('reports.php', 'Export sent to email successfully!', 'success');
+        } else {
+            redirect_with_message('reports.php', 'Failed to send email: ' . $result['message'], 'error');
+        }
     }
 }
 
@@ -201,6 +219,7 @@ $flash = get_flash_message();
                     <button type="submit" class="btn btn-primary">Apply Filters</button>
                     <a href="?<?= http_build_query(array_merge($_GET, ['export' => 'csv'])) ?>" 
                        class="btn btn-success">Export CSV</a>
+                    <button type="button" onclick="showEmailExport()" class="btn btn-warning">📧 Email Export</button>
                 </div>
             </form>
         </div>
@@ -288,5 +307,57 @@ $flash = get_flash_message();
             </div>
         </div>
     </div>
+    
+    <!-- Email Export Modal -->
+    <div id="emailExportModal" class="modal" style="display: none;">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3>Email Export</h3>
+                <button type="button" class="close-modal" onclick="closeEmailModal()">&times;</button>
+            </div>
+            <form method="GET">
+                <input type="hidden" name="export" value="email">
+                <input type="hidden" name="start_date" value="<?= htmlspecialchars($startDate) ?>">
+                <input type="hidden" name="end_date" value="<?= htmlspecialchars($endDate) ?>">
+                <input type="hidden" name="admin_id" value="<?= htmlspecialchars($adminId) ?>">
+                
+                <div class="form-group">
+                    <label for="email" class="form-label">Email Address *</label>
+                    <input type="email" id="email" name="email" class="form-control" required
+                           placeholder="Enter email address to send export">
+                </div>
+                
+                <div style="background: rgba(37, 99, 235, 0.1); padding: 1rem; border-radius: 8px; margin: 1rem 0;">
+                    <h4 style="color: var(--primary-color); margin-bottom: 0.5rem;">Export Details:</h4>
+                    <ul style="color: var(--dark-color); margin: 0;">
+                        <li>Date Range: <?= $startDate ?: 'All' ?> to <?= $endDate ?: 'All' ?></li>
+                        <li>Admin Filter: <?= $adminId ? 'Specific Admin' : 'All Admins' ?></li>
+                        <li>Total Records: <?= $stats['total_bookings'] ?></li>
+                        <li>Format: CSV Attachment</li>
+                    </ul>
+                </div>
+                
+                <button type="submit" class="btn btn-primary">Send Export Email</button>
+            </form>
+        </div>
+    </div>
+    
+    <script>
+        function showEmailExport() {
+            document.getElementById('emailExportModal').style.display = 'flex';
+        }
+        
+        function closeEmailModal() {
+            document.getElementById('emailExportModal').style.display = 'none';
+        }
+        
+        // Close modal when clicking outside
+        window.addEventListener('click', function(e) {
+            const modal = document.getElementById('emailExportModal');
+            if (e.target === modal) {
+                closeEmailModal();
+            }
+        });
+    </script>
 </body>
 </html>

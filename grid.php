@@ -160,6 +160,9 @@ $flash = get_flash_message();
                             </form>
                         <?php elseif ($isOccupied && $booking['status'] !== 'PAID'): ?>
                             <a href="booking_manage.php?id=<?= $booking['id'] ?>" class="btn btn-warning" onclick="event.stopPropagation()">Details</a>
+                            <?php if ($booking['admin_id'] == $_SESSION['user_id']): ?>
+                                <a href="booking_edit.php?id=<?= $booking['id'] ?>" class="btn btn-primary" onclick="event.stopPropagation()">Edit Details</a>
+                            <?php endif; ?>
                             <?php if (!$booking['is_paid']): ?>
                                 <form method="POST" action="booking_actions.php" style="display: inline;" onclick="event.stopPropagation()">
                                     <input type="hidden" name="csrf_token" value="<?= generate_csrf_token() ?>">
